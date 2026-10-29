@@ -23,21 +23,21 @@ namespace DCultCity.Vehicles
         [Header("Vehicle Setup")]
         [SerializeField] public VehicleDefinition definition = new VehicleDefinition();
 
-        [Header("Wheel Colliders — assign in Inspector or auto-built at runtime")]
-        [SerializeField] private WheelCollider wheelFL;
-        [SerializeField] private WheelCollider wheelFR;
-        [SerializeField] private WheelCollider wheelRL;
-        [SerializeField] private WheelCollider wheelRR;
+        [Header("Wheel Colliders - Assign in Inspector or auto-built at runtime")]
+        [SerializeField] private WheelCollider wheelFL = null;
+        [SerializeField] private WheelCollider wheelFR = null;
+        [SerializeField] private WheelCollider wheelRL = null;
+        [SerializeField] private WheelCollider wheelRR = null;
 
         [Header("Seat / Enter Point")]
-        [SerializeField] private Transform driverSeatPoint;
+        [SerializeField] private Transform driverSeatPoint = null;
 
         [Header("Enter Prompt")]
         [SerializeField] private KeyCode enterExitKey = KeyCode.F;
 
         [Header("State (read-only)")]
-        [SerializeField, ReadOnly] private bool playerInside = false;
-        [SerializeField, ReadOnly] private float currentSpeedKmh = 0f;
+        [SerializeField] private bool playerInside = false;
+        [SerializeField] private float currentSpeedKmh = 0f;
 
         // ------------------------------------------------------------------ //
         //  Private state
@@ -443,6 +443,6 @@ namespace DCultCity.Vehicles
         }
     }
 
-    // Tiny attribute so [ReadOnly] serializes cleanly (no assembly needed)
-    public class ReadOnlyAttribute : PropertyAttribute { }
+
+
 }
