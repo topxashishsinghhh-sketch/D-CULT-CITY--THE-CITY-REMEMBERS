@@ -5,14 +5,10 @@ using UnityEngine;
 namespace DCultCity.Vehicles
 {
     /// <summary>
-    /// Core vehicle driving physics using Unity's Rigidbody + WheelColliders (4 total).
-    /// Supports arcade-feel acceleration, speed-sensitive steering, braking, handbrake,
-    /// gear-based reverse, and full enter/exit flow with EventBus integration.
-    ///
-    /// Architecture:
-    ///   VehicleDefinition  → tuning data
-    ///   VehicleController  → physics + input + enter/exit state machine
-    ///   VehicleProceduralVisual → mesh, wheel spin, brake lights
+    /// Core vehicle driving physics using Unity's Rigidbody and arcade forces.
+    /// Eliminates external module dependencies (zero WheelCollider requirement).
+    /// Supports responsive acceleration, speed-sensitive steering, lateral tire grip,
+    /// braking, handbrake drifting, reverse gear, and full enter/exit flow with EventBus.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class VehicleController : MonoBehaviour
@@ -22,12 +18,6 @@ namespace DCultCity.Vehicles
         // ------------------------------------------------------------------ //
         [Header("Vehicle Setup")]
         [SerializeField] public VehicleDefinition definition = new VehicleDefinition();
-
-        [Header("Wheel Colliders - Assign in Inspector or auto-built at runtime")]
-        [SerializeField] private WheelCollider wheelFL = null;
-        [SerializeField] private WheelCollider wheelFR = null;
-        [SerializeField] private WheelCollider wheelRL = null;
-        [SerializeField] private WheelCollider wheelRR = null;
 
         [Header("Seat / Enter Point")]
         [SerializeField] private Transform driverSeatPoint = null;
@@ -52,8 +42,7 @@ namespace DCultCity.Vehicles
         private float brakeInput     = 0f;
         private bool  handbrakeInput = false;
         private bool  reverseGear    = false;
-
-        private bool  wheelCollidersBuilt = false;
+        private bool  isGrounded     = true;
 
         // For on-screen prompt display
         private bool playerNearby = false;
@@ -69,7 +58,7 @@ namespace DCultCity.Vehicles
         {
             rb = GetComponent<Rigidbody>();
             rb.mass = 1400f;
-            rb.centerOfMass = new Vector3(0f, -0.4f, 0.1f); // Low CoM for stability
+            rb.centerOfMass = new Vector3(0f, -0.4f, 0.1f); // Low center of mass for stability
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
@@ -78,7 +67,7 @@ namespace DCultCity.Vehicles
             visual.def = definition;
             visual.BuildVehicle();
 
-            // Add a simple chassis collider sized to the body
+            // Add a chassis collider sized to the car body
             if (GetComponent<BoxCollider>() == null)
             {
                 BoxCollider chassis = gameObject.AddComponent<BoxCollider>();
@@ -86,7 +75,6 @@ namespace DCultCity.Vehicles
                 chassis.size   = new Vector3(1.80f, 0.62f, 4.20f);
             }
 
-            EnsureWheelColliders();
             EnsureDriverSeat();
         }
 
@@ -97,57 +85,6 @@ namespace DCultCity.Vehicles
             seat.transform.SetParent(transform, false);
             seat.transform.localPosition = new Vector3(-0.40f, 0.75f, 0.60f);
             driverSeatPoint = seat.transform;
-        }
-
-        private void EnsureWheelColliders()
-        {
-            if (wheelCollidersBuilt) return;
-
-            // Wheel collider positions matching visual
-            Vector3[] positions = {
-                new Vector3(-0.95f, 0.25f,  1.30f),
-                new Vector3( 0.95f, 0.25f,  1.30f),
-                new Vector3(-0.95f, 0.25f, -1.30f),
-                new Vector3( 0.95f, 0.25f, -1.30f),
-            };
-
-            WheelCollider[] built = new WheelCollider[4];
-            for (int i = 0; i < 4; i++)
-            {
-                GameObject wgo = new GameObject($"WheelCol_{i}");
-                wgo.transform.SetParent(transform, false);
-                wgo.transform.localPosition = positions[i];
-
-                WheelCollider wc = wgo.AddComponent<WheelCollider>();
-                wc.radius  = 0.32f;
-                wc.mass    = 25f;
-                wc.suspensionDistance = 0.18f;
-
-                // Spring & damper suspension
-                JointSpring spring = wc.suspensionSpring;
-                spring.spring   = 38000f;
-                spring.damper   = 4500f;
-                spring.targetPosition = 0.45f;
-                wc.suspensionSpring = spring;
-
-                // Friction curves — arcade-tuned for fun
-                WheelFrictionCurve fwd = wc.forwardFriction;
-                fwd.stiffness = 1.6f;
-                wc.forwardFriction = fwd;
-
-                WheelFrictionCurve side = wc.sidewaysFriction;
-                side.stiffness = 1.4f;
-                wc.sidewaysFriction = side;
-
-                built[i] = wc;
-            }
-
-            if (wheelFL == null) wheelFL = built[0];
-            if (wheelFR == null) wheelFR = built[1];
-            if (wheelRL == null) wheelRL = built[2];
-            if (wheelRR == null) wheelRR = built[3];
-
-            wheelCollidersBuilt = true;
         }
 
         // ------------------------------------------------------------------ //
@@ -174,7 +111,6 @@ namespace DCultCity.Vehicles
 
             if (playerInside)
             {
-                // Read driving inputs regardless of platform
                 ReadDrivingInput();
 
                 if (Input.GetKeyDown(enterExitKey))
@@ -182,15 +118,15 @@ namespace DCultCity.Vehicles
                     ExitVehicle();
                 }
 
-                // Snap player model to seat
-                if (playerController != null)
+                // Snap player model to driver seat
+                if (playerController != null && driverSeatPoint != null)
                 {
                     playerController.transform.position = driverSeatPoint.position;
                     playerController.transform.rotation = driverSeatPoint.rotation;
                 }
             }
 
-            // Animate visual
+            // Animate visual (wheels spin, front wheel steer, brake lights)
             float visualSpeed = Vector3.Dot(rb.velocity, transform.forward);
             bool isBraking = brakeInput > 0.05f || (handbrakeInput && visualSpeed > 0.5f);
             if (visual != null)
@@ -213,30 +149,33 @@ namespace DCultCity.Vehicles
             handbrakeInput = Input.GetKey(KeyCode.Space);
             brakeInput = handbrakeInput ? 1f : 0f;
             if (throttleInput < -0.05f && fwdSpeed > 1.5f) brakeInput = Mathf.Abs(throttleInput);
-
-            // Mobile overrides set by VehicleMobileHUD (see below)
         }
 
         // ------------------------------------------------------------------ //
-        //  Physics update
+        //  Physics update (Arcade Rigidbody Model)
         // ------------------------------------------------------------------ //
         private void FixedUpdate()
         {
-            if (!playerInside) return;
+            // Ground check via downward raycast
+            isGrounded = Physics.Raycast(transform.position + Vector3.up * 0.6f, Vector3.down, 1.4f);
+
+            if (!playerInside || !isGrounded) return;
 
             ApplySteering();
             ApplyMotorAndBraking();
+            ApplyLateralFriction();
+            ApplyUprightStabilization();
         }
 
         private void ApplySteering()
         {
-            // Speed-sensitive steering: narrows at higher speeds for stability
-            float speedFactor = Mathf.Clamp01(rb.velocity.magnitude * definition.steerSpeedRatio);
-            float dynamicMaxSteer = Mathf.Lerp(definition.maxSteerAngle, definition.maxSteerAngle * 0.3f, speedFactor);
+            float fwdSpeed = Vector3.Dot(rb.velocity, transform.forward);
+            float speedFactor = Mathf.Clamp01(Mathf.Abs(fwdSpeed) / Mathf.Max(1f, definition.topSpeed));
+            float dynamicMaxSteer = Mathf.Lerp(definition.maxSteerAngle, definition.maxSteerAngle * 0.35f, speedFactor);
+            float steerSign = fwdSpeed >= -0.5f ? 1f : -1f;
 
-            float targetAngle = steerInput * dynamicMaxSteer;
-            wheelFL.steerAngle = Mathf.Lerp(wheelFL.steerAngle, targetAngle, Time.fixedDeltaTime * 8f);
-            wheelFR.steerAngle = wheelFL.steerAngle;
+            float turnTorque = steerInput * dynamicMaxSteer * steerSign * 90f;
+            rb.AddTorque(transform.up * turnTorque, ForceMode.Force);
         }
 
         private void ApplyMotorAndBraking()
@@ -244,45 +183,43 @@ namespace DCultCity.Vehicles
             float fwdSpeed = Vector3.Dot(rb.velocity, transform.forward);
             bool atTopSpeed = Mathf.Abs(fwdSpeed) >= definition.topSpeed;
 
-            // Torque
-            float motor = 0f;
-            if (!atTopSpeed)
+            // Motor force
+            if (!atTopSpeed && Mathf.Abs(throttleInput) > 0.05f)
             {
-                if (reverseGear)
-                    motor = throttleInput * definition.reverseForce;   // negative input × negative force
-                else
-                    motor = throttleInput * definition.motorForce;
+                float force = reverseGear
+                    ? throttleInput * definition.reverseForce * 3.5f
+                    : throttleInput * definition.motorForce * 3.5f;
+                rb.AddForce(transform.forward * force, ForceMode.Force);
             }
 
-            // Apply motor to rear wheels (RWD)
-            wheelRL.motorTorque = motor;
-            wheelRR.motorTorque = motor;
-
-            // Braking
-            float brake = brakeInput * definition.brakeForce;
-
-            // Handbrake: locks rear wheels (classic drift/stop)
-            if (handbrakeInput)
+            // Braking force
+            if (brakeInput > 0.05f)
             {
-                wheelRL.brakeTorque = definition.brakeForce * 2.5f;
-                wheelRR.brakeTorque = definition.brakeForce * 2.5f;
-                wheelFL.brakeTorque = 0f;
-                wheelFR.brakeTorque = 0f;
+                Vector3 forwardVel = transform.forward * Vector3.Dot(rb.velocity, transform.forward);
+                rb.AddForce(-forwardVel * (definition.brakeForce * brakeInput * 1.5f), ForceMode.Force);
             }
-            else
+            // Passive drag deceleration when coasting
+            else if (Mathf.Abs(throttleInput) < 0.05f && !handbrakeInput)
             {
-                wheelFL.brakeTorque = brake;
-                wheelFR.brakeTorque = brake;
-                wheelRL.brakeTorque = brake;
-                wheelRR.brakeTorque = brake;
+                Vector3 forwardVel = transform.forward * Vector3.Dot(rb.velocity, transform.forward);
+                rb.AddForce(-forwardVel * (definition.dragBrakeForce * 1.5f), ForceMode.Force);
             }
+        }
 
-            // Drag brake: passive deceleration on no input
-            if (Mathf.Abs(throttleInput) < 0.05f && !handbrakeInput)
-            {
-                wheelRL.brakeTorque = definition.dragBrakeForce;
-                wheelRR.brakeTorque = definition.dragBrakeForce;
-            }
+        private void ApplyLateralFriction()
+        {
+            // Cancel sideways sliding unless drifting with handbrake
+            Vector3 sideVelocity = transform.right * Vector3.Dot(rb.velocity, transform.right);
+            float grip = handbrakeInput ? 0.35f : 0.95f;
+            rb.AddForce(-sideVelocity * (rb.mass * 8.5f * grip), ForceMode.Force);
+        }
+
+        private void ApplyUprightStabilization()
+        {
+            // Subtle torque to prevent the car from rolling onto its roof on rough terrain
+            Vector3 predictedUp = Quaternion.AngleAxis(rb.angularVelocity.magnitude * Mathf.Rad2Deg * 0.1f / 8f, rb.angularVelocity) * transform.up;
+            Vector3 torqueVector = Vector3.Cross(predictedUp, Vector3.up);
+            rb.AddTorque(torqueVector * (rb.mass * 10f), ForceMode.Force);
         }
 
         // ------------------------------------------------------------------ //
@@ -293,27 +230,24 @@ namespace DCultCity.Vehicles
             if (playerInside) return;
             playerInside = true;
 
-            // Cache camera reference
             if (playerCamera == null)
                 playerCamera = FindObjectOfType<ThirdPersonCamera>();
 
-            // Hide player visual (model sits inside car)
+            // Disable player control while driving
             if (playerController != null)
             {
                 playerController.enabled = false;
 
-                // Hide character mesh children
                 foreach (var r in playerController.GetComponentsInChildren<Renderer>())
                     r.enabled = false;
             }
 
-            // Reassign camera to this vehicle
+            // Camera tracks vehicle
             if (playerCamera != null)
             {
                 playerCamera.Target = transform;
             }
 
-            // Publish event
             EventBus.Publish(new VehicleOccupancyEvent(
                 definition.vehicleId,
                 VehicleOccupancyEvent.OccupancyChange.Entered,
@@ -328,7 +262,6 @@ namespace DCultCity.Vehicles
             if (!playerInside) return;
             playerInside = false;
 
-            // Move player to exit offset (world-space)
             Vector3 exitWorld = transform.TransformPoint(definition.exitOffset);
 
             if (playerController != null)
@@ -337,28 +270,16 @@ namespace DCultCity.Vehicles
                 playerController.transform.rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
                 playerController.enabled = true;
 
-                // Restore character mesh
                 foreach (var r in playerController.GetComponentsInChildren<Renderer>())
                     r.enabled = true;
             }
 
-            // Return camera to player
             if (playerCamera != null && playerController != null)
                 playerCamera.Target = playerController.transform;
 
-            // Clear wheel torques so car doesn't roll away
-            foreach (var wc in new[] { wheelFL, wheelFR, wheelRL, wheelRR })
-            {
-                if (wc != null)
-                {
-                    wc.motorTorque = 0f;
-                    wc.brakeTorque = definition.brakeForce;
-                }
-            }
             throttleInput = 0f;
             steerInput    = 0f;
 
-            // Publish event
             EventBus.Publish(new VehicleOccupancyEvent(
                 definition.vehicleId,
                 VehicleOccupancyEvent.OccupancyChange.Exited,
@@ -376,7 +297,7 @@ namespace DCultCity.Vehicles
             if (!playerInside) return;
 
             float force = col.impulse.magnitude;
-            if (force < 120f) return; // Ignore trivial contact
+            if (force < 120f) return;
 
             EventBus.Publish(new VehicleCollisionEvent(
                 definition.vehicleId,
@@ -385,7 +306,6 @@ namespace DCultCity.Vehicles
                 force,
                 col.contacts[0].point));
 
-            // Wrap as PlayerActionEvent so Milestone 1 listener also catches it
             if (col.gameObject.CompareTag("NPC") || col.gameObject.CompareTag("Pedestrian"))
             {
                 EventBus.Publish(new PlayerActionEvent(
@@ -442,7 +362,4 @@ namespace DCultCity.Vehicles
             GUI.backgroundColor = Color.white;
         }
     }
-
-
-
 }
