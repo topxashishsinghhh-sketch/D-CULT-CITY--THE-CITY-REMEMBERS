@@ -59,6 +59,18 @@ namespace DCultCity.Core
             this.actionName = string.IsNullOrEmpty(actionName) ? actionType.ToString() : actionName;
         }
 
+        public PlayerActionEvent(
+            string actorId,
+            ActionType actionType,
+            Vector3 location,
+            string targetId,
+            float reputationDelta,
+            float trustDelta,
+            string actionName = null)
+            : this(actorId, actionType, location, targetId, null, reputationDelta, trustDelta, actionName)
+        {
+        }
+
         public override string ToString()
         {
             string witnessStr = witnesses != null && witnesses.Count > 0 ? string.Join(", ", witnesses) : "None";
