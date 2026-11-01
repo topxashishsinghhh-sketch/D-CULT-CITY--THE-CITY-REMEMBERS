@@ -82,13 +82,14 @@ namespace DCultCity.World
 
         private void OnGUI()
         {
+            float sc = Mathf.Max(1f, Screen.height / 720f);
+
             var p = FindObjectOfType<DCultCity.Player.ThirdPersonController>();
             if (p != null && !isModalOpen)
             {
                 float dist = Vector3.Distance(p.transform.position, rouletteTablePos);
                 if (dist < interactRadius)
                 {
-                    float sc = Mathf.Max(1f, Screen.height / 720f);
                     float w = 280f * sc;
                     float h = 42f * sc;
                     GUI.backgroundColor = new Color(0.12f, 0.12f, 0.16f, 0.92f);
@@ -101,7 +102,6 @@ namespace DCultCity.World
             if (!isModalOpen) return;
             InitStyles();
 
-            float sc = Mathf.Max(1f, Screen.height / 720f);
             float screenW = Screen.width;
             float screenH = Screen.height;
 
