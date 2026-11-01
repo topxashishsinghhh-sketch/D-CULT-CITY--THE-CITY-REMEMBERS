@@ -35,6 +35,7 @@ namespace DCultCity.NPC
         private bool  playerInRange    = false;
         private bool  dialogueOpen     = false;
         private int   selectedReply    = -1;
+        public  int   SelectedReply    => selectedReply;
 
         private DialogueLine activeLine    = null;
         private string       reactionText  = "";    // Memory-driven reaction displayed above head

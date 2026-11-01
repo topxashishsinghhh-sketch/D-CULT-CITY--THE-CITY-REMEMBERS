@@ -57,7 +57,9 @@ namespace DCultCity.NPC
         // ------------------------------------------------------------------ //
         public string      NPCId        => npcId;
         public NPCMemory   Memory       => memory;
-        public TrustSystem TrustTracker => trust;
+        public TrustSystem TrustTracker        => trust;
+        public float       FleeThreshold       => fleeThreshold;
+        public float       CallPoliceThreshold => callPoliceThreshold;
         public NPCState    CurrentState => state;
 
         // ------------------------------------------------------------------ //
@@ -108,7 +110,7 @@ namespace DCultCity.NPC
             NPCState desired = lvl switch
             {
                 TrustLevel.Hostile    when trust.Current <= callPoliceThreshold => NPCState.CallPolice,
-                TrustLevel.Hostile                                               => NPCState.Flee,
+                TrustLevel.Hostile    when trust.Current <= fleeThreshold       => NPCState.Flee,
                 TrustLevel.Suspicious                                            => NPCState.Wary,
                 TrustLevel.Trusted                                               => NPCState.Friendly,
                 _                                                                => NPCState.Idle
