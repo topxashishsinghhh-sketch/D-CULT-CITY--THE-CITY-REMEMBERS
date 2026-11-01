@@ -257,10 +257,11 @@ namespace DCultCity.SaveLoad
             if (ctrl == null) return;
 
             // Move player to saved position
-            ctrl.GetComponent<CharacterController>()?.enabled = false;
+            var cc = ctrl.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
             ctrl.transform.position = new Vector3(pd.posX, pd.posY, pd.posZ);
             ctrl.transform.rotation = Quaternion.Euler(0f, pd.rotY, 0f);
-            ctrl.GetComponent<CharacterController>()?.enabled = true;
+            if (cc != null) cc.enabled = true;
 
             // Restore appearance
             var data = new CharacterCustomizationData
