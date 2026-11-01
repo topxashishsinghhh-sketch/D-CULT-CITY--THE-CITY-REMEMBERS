@@ -96,7 +96,7 @@ namespace DCultCity.NPC
                         }
                     }
 
-                    if (entry.agent != null)
+                    if (entry.agent != null && entry.agent.isOnNavMesh)
                     {
                         entry.agent.isStopped = shouldCull;
                     }
