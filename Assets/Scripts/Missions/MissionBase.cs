@@ -64,7 +64,7 @@ namespace DCultCity.Missions
         public abstract string        Title      { get; }
         public abstract string        Description{ get; }
         public abstract MissionFaction Faction   { get; }
-        public MissionStatus          Status     { get; protected set; } = MissionStatus.Locked;
+        public MissionStatus          Status     { get; set; } = MissionStatus.Locked;
 
         public event Action<IMission>         OnCompleted;
         public event Action<IMission, string> OnFailed;
