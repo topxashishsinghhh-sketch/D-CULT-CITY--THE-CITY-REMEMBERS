@@ -72,9 +72,9 @@ namespace DCultCity.World
 
                 var src = new NavMeshBuildSource
                 {
-                    shape     = NavMeshBuildSourceShape.Mesh,
-                    sourceData = filter.sharedMesh,
-                    transform  = r.transform.localToWorldMatrix,
+                    shape        = NavMeshBuildSourceShape.Mesh,
+                    sourceObject = filter.sharedMesh,
+                    transform    = r.transform.localToWorldMatrix,
                     area       = 0
                 };
                 sources.Add(src);
