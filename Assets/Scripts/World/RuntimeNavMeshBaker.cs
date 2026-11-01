@@ -8,65 +8,63 @@ namespace DCultCity.World
     /// Bakes a NavMesh at runtime over the procedurally generated test city
     /// so that NPC NavMeshAgents can navigate its roads and sidewalks.
     ///
-    /// REQUIRES: Unity AI Navigation package (com.unity.ai.navigation).
-    /// If the package is not installed, this script falls back to printing
-    /// clear instructions for manual baking in the Editor.
+    /// Uses the legacy NavMeshBuilder API (no extra packages required).
+    /// Collects ALL MeshRenderers in the scene (not just static ones) so
+    /// procedurally spawned city geometry is included in the bake.
     ///
     /// HOW IT WORKS:
-    ///   1. Finds the NavMeshSurface component on this GameObject.
-    ///   2. Calls BuildNavMesh() after the city geometry has been generated.
-    ///   3. NPCFactory is delayed one frame so NPCs spawn after the bake completes.
+    ///   1. Waits <bakeDelay> seconds so SceneBootstrap can finish generating the city.
+    ///   2. Gathers every MeshRenderer with a valid MeshFilter as a NavMesh source.
+    ///   3. Calls NavMeshBuilder.BuildNavMeshData and registers the result.
+    ///   4. Sets IsBaked = true so other systems (e.g. PolicePursuitManager) can
+    ///      wait before attaching NavMeshAgents.
     ///
-    /// EDITOR ALTERNATIVE (no package needed):
-    ///   • Select the city root GameObject in the Hierarchy.
-    ///   • Set all city primitives to Navigation Static in the Inspector.
-    ///   • Window → AI → Navigation → Bake tab → click Bake.
+    /// EDITOR ALTERNATIVE (zero code):
+    ///   Window → AI → Navigation → Bake tab → click Bake.
     /// </summary>
     public class RuntimeNavMeshBaker : MonoBehaviour
     {
         [Header("Bake Settings")]
         [Tooltip("Delay in seconds after scene load before baking (let city generate first)")]
-        [SerializeField] private float bakeDelay = 0.15f;
+        [SerializeField] private float bakeDelay = 0.5f;
 
         [Tooltip("If true, logs the baked NavMesh triangle count as a health check")]
         [SerializeField] private bool logBakeResult = true;
 
-        private bool baked = false;
+        /// <summary>True once a valid NavMesh has been baked or was already present.</summary>
+        public static bool IsBaked { get; private set; } = false;
+
+        private void Awake()
+        {
+            // If a pre-baked NavMesh exists from the editor bake, mark as done immediately.
+            if (NavMesh.CalculateTriangulation().indices.Length > 0)
+            {
+                IsBaked = true;
+                if (logBakeResult)
+                    Debug.Log($"<color=#00FFCC>[RuntimeNavMeshBaker]</color> Pre-baked NavMesh detected. Triangles: {NavMesh.CalculateTriangulation().indices.Length / 3}");
+            }
+        }
 
         private IEnumerator Start()
         {
-            yield return new WaitForSeconds(bakeDelay);
+            if (IsBaked) yield break;                  // already baked in editor
+            yield return new WaitForSeconds(bakeDelay); // wait for city geometry
             TryBakeNavMesh();
         }
 
         [ContextMenu("Bake NavMesh Now")]
         public void TryBakeNavMesh()
         {
-            if (baked) return;
+            if (IsBaked) return;
 
-#if UNITY_AI_NAVIGATION
-            // NavMeshSurface path (requires com.unity.ai.navigation package)
-            var surface = GetComponent<UnityEngine.AI.NavMeshSurface>();
-            if (surface == null)
-                surface = gameObject.AddComponent<UnityEngine.AI.NavMeshSurface>();
-
-            surface.collectObjects = UnityEngine.AI.CollectObjects.All;
-            surface.useGeometry    = UnityEngine.AI.NavMeshCollectGeometry.PhysicsColliders;
-            surface.BuildNavMesh();
-            baked = true;
-
-            if (logBakeResult)
-                Debug.Log($"<color=#00FFCC>[RuntimeNavMeshBaker]</color> NavMesh baked via NavMeshSurface. Triangles: {NavMesh.CalculateTriangulation().indices.Length / 3}");
-#else
-            // Fallback — try the legacy static bake API
             NavMeshBuildSettings settings = NavMesh.GetSettingsByIndex(0);
 
-            // Mark all static Renderers as nav-mesh sources
+            // Collect ALL MeshRenderers — procedural city objects are NOT isStatic,
+            // so we intentionally skip the isStatic filter here.
             var sources = new System.Collections.Generic.List<NavMeshBuildSource>();
             var renderers = FindObjectsOfType<MeshRenderer>();
             foreach (var r in renderers)
             {
-                if (!r.gameObject.isStatic) continue;
                 var filter = r.GetComponent<MeshFilter>();
                 if (filter == null || filter.sharedMesh == null) continue;
 
@@ -75,36 +73,34 @@ namespace DCultCity.World
                     shape        = NavMeshBuildSourceShape.Mesh,
                     sourceObject = filter.sharedMesh,
                     transform    = r.transform.localToWorldMatrix,
-                    area       = 0
+                    area         = 0
                 };
                 sources.Add(src);
             }
 
             if (sources.Count == 0)
             {
-                Debug.LogWarning("<color=#FFAA00>[RuntimeNavMeshBaker]</color> No Static renderers found. " +
-                                 "Either install 'com.unity.ai.navigation' package OR manually bake: " +
-                                 "Window > AI > Navigation > Bake. NPCs will wander in place until NavMesh is ready.");
+                Debug.LogWarning("<color=#FFAA00>[RuntimeNavMeshBaker]</color> No MeshRenderers found in scene. " +
+                                 "NavMesh bake skipped. NPCs will stand still until geometry exists.");
                 return;
             }
 
-            Bounds worldBounds = new Bounds(Vector3.zero, new Vector3(200f, 50f, 200f));
+            Bounds worldBounds = new Bounds(Vector3.zero, new Vector3(400f, 50f, 400f));
             var data = NavMeshBuilder.BuildNavMeshData(settings, sources, worldBounds, Vector3.zero, Quaternion.identity);
 
             if (data != null)
             {
                 NavMesh.AddNavMeshData(data);
-                baked = true;
+                IsBaked = true;
                 if (logBakeResult)
-                    Debug.Log($"<color=#00FFCC>[RuntimeNavMeshBaker]</color> NavMesh baked via legacy API. " +
-                              $"Triangles: {NavMesh.CalculateTriangulation().indices.Length / 3}");
+                    Debug.Log($"<color=#00FFCC>[RuntimeNavMeshBaker]</color> NavMesh baked. " +
+                              $"Sources: {sources.Count}  Triangles: {NavMesh.CalculateTriangulation().indices.Length / 3}");
             }
             else
             {
-                Debug.LogWarning("<color=#FF6600>[RuntimeNavMeshBaker]</color> NavMesh bake returned null. " +
-                                 "Please bake manually: Window > AI > Navigation > Bake.");
+                Debug.LogWarning("<color=#FF6600>[RuntimeNavMeshBaker]</color> NavMesh bake returned null — " +
+                                 "try Window > AI > Navigation > Bake for a manual bake.");
             }
-#endif
         }
     }
 }

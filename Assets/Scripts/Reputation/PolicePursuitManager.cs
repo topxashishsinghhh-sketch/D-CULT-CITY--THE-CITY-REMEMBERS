@@ -1,4 +1,6 @@
+using System.Collections;
 using DCultCity.Core;
+using DCultCity.World;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -45,7 +47,38 @@ namespace DCultCity.Reputation
         {
             var p = FindObjectOfType<DCultCity.Player.ThirdPersonController>();
             if (p != null) playerTf = p.transform;
+
+            // Build the cruiser geometry immediately (lights, body, etc.),
+            // but defer the NavMeshAgent until the NavMesh is actually baked.
             BuildPoliceCruiser();
+            StartCoroutine(AttachNavMeshAgentWhenReady());
+        }
+
+        /// <summary>
+        /// Polls RuntimeNavMeshBaker.IsBaked every 0.1 s (up to 10 s) then
+        /// adds the NavMeshAgent so Unity never logs "no valid NavMesh".
+        /// </summary>
+        private IEnumerator AttachNavMeshAgentWhenReady()
+        {
+            float waited = 0f;
+            while (!RuntimeNavMeshBaker.IsBaked && waited < 10f)
+            {
+                yield return new WaitForSeconds(0.1f);
+                waited += 0.1f;
+            }
+
+            if (!RuntimeNavMeshBaker.IsBaked)
+            {
+                Debug.LogWarning("<color=#FFAA00>[PolicePursuitManager]</color> NavMesh still not ready after 10 s. " +
+                                 "Police cruiser will not navigate. Bake a NavMesh in Window > AI > Navigation.");
+                yield break;
+            }
+
+            policeAgent = policeCruiserObj.AddComponent<NavMeshAgent>();
+            policeAgent.speed           = policeSpeed;
+            policeAgent.angularSpeed    = 240f;
+            policeAgent.stoppingDistance = arrestDistance;
+            Debug.Log("<color=#00FFCC>[PolicePursuitManager]</color> NavMeshAgent attached to Police Interceptor.");
         }
 
         private void Update()
@@ -209,12 +242,6 @@ namespace DCultCity.Reputation
             blueStrobe.color = Color.cyan;
             blueStrobe.range = 14f;
             blueStrobe.intensity = 0f;
-
-            // NavMeshAgent for chase
-            policeAgent = policeCruiserObj.AddComponent<NavMeshAgent>();
-            policeAgent.speed = policeSpeed;
-            policeAgent.angularSpeed = 240f;
-            policeAgent.stoppingDistance = arrestDistance;
 
             policeCruiserObj.SetActive(false);
         }
