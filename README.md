@@ -6,7 +6,7 @@ NPCs in D-Cult City remember the player's actions, spread reputation through gos
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 * **AI Memory & Trust System:**
   * Central generic decoupled **EventBus** (`Publish` / `Subscribe<T>`).
@@ -94,15 +94,4 @@ Assets/
     ├── Missions/      (MissionManager, MissionPolice, MissionGangster, SideQuests)
     ├── World/         (FullWorldBuilder, TestCityVehicleSpawner, DayNightCycle, CasinoMiniGame)
     ├── Wildlife/      (AnimalBase, WildlifeSpawner)
-    └── UI/            (GameFlowManager, MainMenuUI, CharacterCreatorUI, MobileControlsOverlay, MissionUI, SaveLoadUI)
-```
-
----
-
-## 🚀 How to Run in Unity
-
-1. Open **Unity Hub** and select **Add > Add project from disk**.
-2. Select this repository folder.
-3. Open with **Unity 2022.3 LTS** (or newer).
-4. In the Project window, double-click `Assets/Scenes/TestCity_Milestone1.unity`.
-5. Press **Play**!
+    └── UI/            (GameFlowManager, MainMenuUI, CharacterCreatorUI, MobileControlsOverlay, MissionUI, SaveLoadU
